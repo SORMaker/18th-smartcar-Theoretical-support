@@ -129,3 +129,61 @@ $$
 
 #                                         ***电子罗盘篇***
 
+### 倾角补偿
+
+当我们读磁力计处于水平位置时，我们可以直接通过x轴和y轴的值，用arctan()函数将偏航角计算出来。
+
+但是当我们的磁力计倾斜时，这个时候就没有办法直接用x轴和y轴的数据进行解算。这个时候我们就要考虑怎么进行补偿，来解算出准确的偏航角。
+
+1.利用**旋转矩阵**进行偏航角的补偿
+
+我们首先定义，滚转角用P，俯仰角用R，偏航角用Y。
+
+设罗盘的滚转角是P，俯仰角为R，偏航角是Y时，三轴磁力计输出的测量值是
+$$
+M(P,R,Y) = [Mx,My,Mz]^{T}
+$$
+设罗盘水平放置时，具有相同角度的地磁传感器输出为
+$$
+M(0,0,Y) = [M_{Hx},M_{Hy},M_{Hz}]^T
+$$
+我们根据罗盘实际姿态和水平面的关系，可以得出
+$$
+\left\{\begin{matrix} 
+  M_{(P,R,Y)}=R_RR_PM_{(0,0,Y)} \\  
+  M_{(0,0,Y)}=R_R^{-1}R_P^{-1}M_{(0,0,Y)} 
+\end{matrix}\right. 
+$$
+前面两个东东，是滚转角和俯仰角的旋转矩阵
+
+![image-20230319015630531](assets/image-20230319015630531.png)
+
+将两个矩阵带入，可以得到：
+
+![image-20230319015709920](assets/image-20230319015709920.png)
+
+这样我们就得到了补偿后的磁力计的值，之后就可以按照反正切来进行偏航角的计算了
+
+![img](assets/20200312171707744.png)
+
+下面附上C代码，其实C代码非常容易
+
+```c
+//倾角补偿 + 偏航角解算
+//INVVAL = π / 180 
+//VAL = 180 / π
+//这里建议上面两个常量提前自己算好，减轻单片机运算压力
+void Inclination_compensation(_xyz_mag_s16_st *mag_data)
+{
+    float Hx = 0,Hy = 0;
+    Hx = mag_data->mx * cosf(imu_data.rol * INVVAL) + mag_data->mz * sinf(imu_data.rol * INVVAL);
+    Hy = mag_data->mx * sinf(imu_data.pit * INVVAL) * sinf(imu_data.rol * INVVAL) + mag_data->my * cosf(imu_data.pit * INVVAL) - mag_data->mz * sinf(imu_data.pit * INVVAL) * cosf(imu_data.rol * INVVAL);
+    imu_data.mag_yaw = atan2f(Hx,Hy) * VAL;
+    if (imu_data.mag_yaw < 0)
+    {
+        imu_data.mag_yaw += 360;
+    }
+}
+```
+
+其实倾角补偿还有一种向量叉积的方法，这个方法放到以后研读mahony算法的时候进行分析
